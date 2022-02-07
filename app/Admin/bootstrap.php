@@ -1,5 +1,8 @@
 <?php
 
+use Encore\Admin\Form;
+use Encore\Admin\Form\Tools;
+
 /**
  * Laravel-admin - admin builder based on Laravel.
  * @author z-song <https://github.com/z-song>
@@ -18,4 +21,16 @@
  *
  */
 
-Encore\Admin\Form::forget(['map', 'editor']);
+Form::forget(['map', 'editor']);
+
+Form::init(function ($form) {
+
+    $form->disableEditingCheck();
+    $form->disableCreatingCheck();
+    $form->disableViewCheck();
+    $form->tools(function (Tools $tools) {
+        $tools->disableDelete();
+        $tools->disableView();
+        $tools->disableList();
+    });
+});

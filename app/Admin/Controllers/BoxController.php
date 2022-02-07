@@ -205,14 +205,9 @@ class BoxController extends AdminController
             return join('<br>', $boxesArr);
         });
 
-        $viewData = self::getAndGenerateCommentHistory($id, true);
-        $show->field('index_item', 'Index Item')->as(function () use ($id, $viewData) {
-            $data = "";
-            foreach ($viewData ?? [] as $item):
-                $data .= $item['creator'] . " : " . $item['comment'] . " (" . $item['timestamp'] . ") | ";
-            endforeach;
-
-            return $data;
+        $viewData = self::getAndGenerateCommentHistory($id);
+        $show->field('comment_history', 'Comment History')->unescape()->as(function () use ($viewData) {
+            return $viewData;
         });
 
         $show->panel()
