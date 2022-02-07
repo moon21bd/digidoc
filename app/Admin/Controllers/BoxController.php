@@ -133,8 +133,6 @@ class BoxController extends AdminController
 
         $grid->column("id", __("Sl"));
         $grid->column("serial_no", __("Box Serial"));
-        // $grid->column("box_image", __("Box Image"))->image();
-
         $grid->column('', 'Index Item')->display(function () {
             $id = $this->id;
             $boxesArr = IndexItem::where('box_id', $id)->get(['title'])->toArray();
@@ -142,30 +140,13 @@ class BoxController extends AdminController
                 return $boxes['title'] ?? "";
             }, $boxesArr);
 
-            $joinedItem = join(', ', $boxesArr);
+            $joinedItem = join(' | ', $boxesArr);
             return Str::limit($joinedItem ?? "", 30);
         });
 
-        /*$grid->column('', 'Index Item')->expand(function ($model) {
-            $indexItem = $model->index_item()->take(10)->get()->map(function ($item) {
-                return $item->only(['id', 'title']);
-            });
-            return new Table(['ID', 'Content'], $indexItem->toArray());
-        });*/
-
-        /* $grid->column('status')->using([
-             'discard' => 'Discard',
-             'need_more_info' => 'Need more info',
-             'have_to_scan' => 'Have to scan',
-             'pending' => 'Pending'
-         ], 'Unknown')->dot([
-             'discard' => 'danger',
-             'need_more_info' => 'info',
-             'have_to_scan' => 'primary',
-             'pending' => 'warning',
-         ], 'warning');*/
-
-
+        $grid->column('comment_history', 'Comment History')->modal('Comment History', function () {
+            return self::getAndGenerateCommentHistory($this->id);
+        });
         $grid->column('status', 'Status')->display(function ($status) use ($isClient) {
             if ($isClient) {
                 $id = $this->id ?? 0;
@@ -176,22 +157,14 @@ class BoxController extends AdminController
         });
 
         $grid->updater()->name(__('Updated By'));
-
         $grid->column("updated_at", __("Date"))->display(function ($updated_at) {
             return date('d/m/Y', strtotime($updated_at));
         });
 
-        /*$grid->column('comment', 'Comment')->expand(function ($model) {
-            $comments = $model->box_comment()->take(10)->get()->map(function ($comment) {
-                return $comment->only(['id', 'title']);
-            });
-            return new Table(['ID', 'Content'], $comments->toArray());
-        });*/
-
         $disableButton = false;
-        if ($isClient) {
+        if ($isClient)
             $disableButton = true;
-        }
+
         $grid->disableCreateButton($disableButton);
         $grid->disableFilter();
         $grid->actions(function ($actions) use ($isClient) {
@@ -208,7 +181,6 @@ class BoxController extends AdminController
         });
 
         $grid->model()->orderBy('id', 'desc');
-
         return $grid;
     }
 
@@ -221,45 +193,36 @@ class BoxController extends AdminController
     protected function detail($id)
     {
         $show = new Show(Box::findOrFail($id));
-
         $show->id("ID");
         $show->field("serial_no", __("Serial No"));
         $show->field("box_image", __("Box Image"))->image();
         $show->field("status", __("Status"));
-
-        $show->field('', 'Comments')->as(function () use ($id) {
-            $boxesArr = BoxComment::where('box_id', $id)
-                ->with('creator')
-                ->get(['created_by', 'title', 'created_at', 'updated_at']);
-
-            $finalArr = [];
-            foreach ($boxesArr ?? [] as $boxInfo) {
-                $creator = $boxInfo->creator->name ?? "";
-                $comment = $boxInfo->title ?? "";
-                $updatedTime = date('Y-m-d H:i:s', strtotime($boxInfo->updated_at));
-                $finalArr['final_message'][] = $creator . " : " . $comment . " at " . $updatedTime;
-            }
-
-            /*$finalArr = array_map(function ($boxes) {
-                return $boxes ?? "";
-            }, $finalArr);*/
-
-            return \GuzzleHttp\json_encode($finalArr);
-        });
-
         $show->field('index_item', 'Index Item')->as(function () use ($id) {
             $boxesArr = IndexItem::where('box_id', $id)->get(['title'])->toArray();
             $boxesArr = array_map(function ($boxes) {
                 return $boxes['title'] ?? "";
             }, $boxesArr);
-            return join(PHP_EOL, $boxesArr);
+            return join('<br>', $boxesArr);
+        });
+
+        $viewData = self::getAndGenerateCommentHistory($id, true);
+        $show->field('index_item', 'Index Item')->as(function () use ($id, $viewData) {
+            $data = "";
+            foreach ($viewData ?? [] as $item):
+                $data .= $item['creator'] . " : " . $item['comment'] . " (" . $item['timestamp'] . ") | ";
+            endforeach;
+
+            return $data;
         });
 
         $show->panel()
             ->tools(function ($tools) {
-                $tools->disableEdit();
-                //$tools->disableList();
-                $tools->disableDelete();
+                // $tools->disableEdit();
+                $isClient = $this->checkIsClient(Admin::user()->id);
+                if ($isClient) {
+                    $tools->disableList();
+                    $tools->disableDelete();
+                }
             });
 
         return $show;
@@ -273,12 +236,40 @@ class BoxController extends AdminController
     public function checkIsClient($userId)
     {
         $userModel = config('admin.database.users_model');
-        $isClient = $userModel::where('id', $userId)
+        return $userModel::where('id', $userId)
             ->whereHas('roles', function ($q) {
                 $q->where('slug', 'client');
-            })
-            ->exists();
-        return $isClient;
+            })->exists();
     }
 
+    public static function getChattingHistoryHTML(array $data)
+    {
+        return view('chatting_history', ['data' => $data])->render();
+    }
+
+    public static function getAndGenerateCommentHistory($id, $isDataOnly = false)
+    {
+        $boxesArr = BoxComment::where('box_id', $id)
+            ->with('creator')
+            ->orderBy('updated_at', 'DESC')
+            ->get(['created_by', 'title', 'created_at', 'updated_at']);
+
+        $finalArr = [];
+        foreach ($boxesArr ?? [] as $boxInfo) {
+            $creator = $boxInfo->creator->name ?? "";
+            $comment = $boxInfo->title ?? "";
+            $updatedTime = date('Y-m-d H:i:s', strtotime($boxInfo->updated_at));
+            $finalArr[] = [
+                'avatar_url' => '',
+                'creator' => $creator,
+                'comment' => $comment,
+                'timestamp' => $updatedTime
+            ];
+        }
+
+        if ($isDataOnly)
+            return $finalArr;
+
+        return self::getChattingHistoryHTML($finalArr);
+    }
 }
