@@ -300,7 +300,6 @@ return [
     |
     */
     'login_background_image' => '/vendor/digidoc/login-bg-2.jpg',
-    // 'login_background_image' => '',
     /*
     |--------------------------------------------------------------------------
     | Show version at footer
