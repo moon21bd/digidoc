@@ -33,21 +33,12 @@ class BoxController extends AdminController
     protected function form()
     {
         $form = new Form(new Box);
-
-        /*$userModel = config('admin.database.users_model');
-        $isClient = $userModel::where('id', Admin::user()->id)
-            ->whereHas('roles', function ($q) {
-                $q->where('slug', 'client');
-            })
-            ->exists();*/
-
-        // $form->display("id", "ID");
-
-        $isClient = $this->checkIsClient(Admin::user()->id);
+        // $isClient = $this->checkIsClient(Admin::user()->id);
+        $isClient = Admin::user()->isRole('client');
 
         if ($isClient) { // client section here
 
-            $form->display("serial_no", __("Serial No"));
+            $form->display("serial_no", __("Serial No"))->disable();
 
             /*$form->hasMany("index_item", 'Index Items', function (Form\NestedForm $form) {
                 $form->text("title", __("Item"))->rules('required')->disable();
@@ -58,18 +49,13 @@ class BoxController extends AdminController
             $form->hasMany("box_comment", 'Comments', function (Form\NestedForm $form) {
                 $form->text("title", __("Comment"))->rules('required');
                 $form->hidden("created_by")->default(Admin::user()->id);
-                // $form->hidden("updated_by")->default(Admin::user()->id);
+                $form->hidden("updated_by")->default(Admin::user()->id);
             });
 
-            $form->file("box_image", __("Box Image"))
-                ->attribute('id', 'box_image')
-                ->removable()
-                ->name(function ($file) {
-                    return md5(time()) . "." . $file->guessExtension();
-                })->disable();
+            $form->file("box_image", __("Box Image"))->disable();
 
             $form->radio("status", __("Status"))
-                ->options(['discard' => 'Discard', 'need_more_info' => 'Need more info', 'have_to_scan' => 'Have to scan', 'pending' => 'Pending']);
+                ->options(['pending' => 'Pending', 'discard' => 'Discard', 'need_more_info' => 'Need more info', 'have_to_scan' => 'Have to scan']);
 
         } else { // vendor section here
 
@@ -77,27 +63,28 @@ class BoxController extends AdminController
             $form->hasMany("index_item", 'Index Items', function (Form\NestedForm $form) {
                 $form->text("title", __("Item"))->rules('required');
                 $form->hidden("created_by")->default(Admin::user()->id);
-                // $form->hidden("updated_by")->default(Admin::user()->id);
+                $form->hidden("updated_by")->default(Admin::user()->id);
             });
 
             $form->hasMany("box_comment", 'Comment', function (Form\NestedForm $form) {
                 $form->text("title", __("Comments"))->rules('required');
                 $form->hidden("created_by")->default(Admin::user()->id);
-                // $form->hidden("updated_by")->default(Admin::user()->id);
+                $form->hidden("updated_by")->default(Admin::user()->id);
             });
 
             $form->file("box_image", __("Box Image"))
                 ->attribute('id', 'box_image')
                 ->removable()
+                ->rules('mimes:jpeg,png,jpg,gif,svg')
+                // ->move('files')
                 ->name(function ($file) {
                     return md5(time()) . "." . $file->guessExtension();
                 });
 
             // user reference fields create here
             $form->hidden("created_by")->default(Admin::user()->id);
-            $form->hidden("status")->default('pending');
+            $form->hidden("status")->default('');
         }
-
 
         // callback after form submission
         $form->submitted(function (Form $form) {
@@ -129,9 +116,19 @@ class BoxController extends AdminController
     protected function grid()
     {
         $grid = new Grid(new Box);
-        $isClient = $this->checkIsClient(Admin::user()->id);
+        $query = $grid->model();
 
-        $grid->column("id", __("Sl"));
+        // Admin::user()->isRole('client');
+        // $isClient = $this->checkIsClient(Admin::user()->id);
+        $isClient = Admin::user()->isRole('client');
+
+        if (Admin::user()->isRole('vendor')) { // if user is vendor
+            $query->where(function ($q) {
+                $q->where('created_by', '=', Admin::user()->id);
+            });
+        }
+
+        $grid->column("id", __("Sl"))->sortable();
         $grid->column("serial_no", __("Box Serial"));
         $grid->column('', 'Index Item')->display(function () {
             $id = $this->id;
@@ -149,23 +146,29 @@ class BoxController extends AdminController
         });
         $grid->column('status', 'Status')->display(function ($status) use ($isClient) {
             if ($isClient) {
-                $id = $this->id ?? 0;
-                $url = url("admin/boxes" . "/" . $id . "/edit");
-                return "<a href='$url'>Click to Review</a>";
+                if (!empty($status)) {
+                    return $status;
+                } else {
+                    $id = $this->id ?? 0;
+                    $url = url("admin/boxes" . "/" . $id . "/edit");
+                    return "<a href='$url'>Click to Review</a>";
+                }
             }
             return $status;
         });
 
-        $grid->updater()->name(__('Updated By'));
-        $grid->column("updated_at", __("Date"))->display(function ($updated_at) {
-            return date('d/m/Y', strtotime($updated_at));
-        });
+        if (Admin::user()->isAdministrator()) {
+            $grid->updater()->name(__('Updated By'));
+            $grid->column("updated_at", __("Date"))->display(function ($updated_at) {
+                return date('d/m/Y', strtotime($updated_at));
+            });
+        }
 
-        $disableButton = false;
+        $isDisableCreateButton = false;
         if ($isClient)
-            $disableButton = true;
+            $isDisableCreateButton = true;
 
-        $grid->disableCreateButton($disableButton);
+        $grid->disableCreateButton($isDisableCreateButton);
         $grid->disableFilter();
         $grid->actions(function ($actions) use ($isClient) {
             // $actions->disableView();
@@ -213,7 +216,8 @@ class BoxController extends AdminController
         $show->panel()
             ->tools(function ($tools) {
                 // $tools->disableEdit();
-                $isClient = $this->checkIsClient(Admin::user()->id);
+                // $isClient = $this->checkIsClient(Admin::user()->id);
+                $isClient = Admin::user()->isRole('client');
                 if ($isClient) {
                     $tools->disableList();
                     $tools->disableDelete();
