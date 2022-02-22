@@ -51,4 +51,16 @@ class Box extends Model
         return $this->hasMany(BoxComment::class);
     }
 
+    public function setBoxImageAttribute($pictures)
+    {
+        if (is_array($pictures)) {
+            $this->attributes['box_image'] = json_encode($pictures);
+        }
+    }
+
+    public function getBoxImageAttribute($pictures)
+    {
+        return json_decode($pictures, true);
+    }
+
 }

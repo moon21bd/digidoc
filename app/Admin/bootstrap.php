@@ -1,6 +1,7 @@
 <?php
 
 use Encore\Admin\Form;
+use Encore\Admin\Admin;
 use Encore\Admin\Form\Tools;
 
 /**
@@ -21,8 +22,8 @@ use Encore\Admin\Form\Tools;
  *
  */
 
+Admin::js(['js/custom_scripts.js']);
 Form::forget(['map', 'editor']);
-
 Form::init(function ($form) {
 
     $form->disableEditingCheck();
