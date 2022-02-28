@@ -49,13 +49,14 @@ class BoxController extends AdminController
                 // $form->hidden("updated_by")->default(Admin::user()->id);
             });*/
 
-            $form->hasMany("box_comment", 'Comments', function (Form\NestedForm $form) {
+           $box_comment = $form->hasMany("box_comment", 'Comments', function (Form\NestedForm $form) {
                 $form->text("title", __("Comment"))->rules('required');
                 $form->hidden("created_by")->default(Admin::user()->id);
                 $form->hidden("updated_by")->default(Admin::user()->id);
             });
+            $box_comment->readonly();
 
-            $form->multipleFile("box_image", __("Box Image"))->disable();
+            $form->multipleFile("box_image", __("Uploaded Index"))->disable();
 
             $form->radio("status", __("Status"))
                 ->options(['Shred It' => 'Shred It', 'Scan It' => 'Scan It', 'More Info Needed' => 'More Info Needed']);
@@ -70,7 +71,9 @@ class BoxController extends AdminController
             });
 
             $form->hasMany("box_comment", 'Comment', function (Form\NestedForm $form) {
-                $form->text("title", __("Comments"))->rules('required');
+                $form->text("title", __("Comments"))->rules('required')
+                //    ->disable()
+                ;
                 $form->hidden("created_by")->default(Admin::user()->id);
                 $form->hidden("updated_by")->default(Admin::user()->id);
             });
@@ -84,11 +87,12 @@ class BoxController extends AdminController
                     return md5(time()) . "." . $file->guessExtension();
                 });*/
 
-            $form->multipleFile('box_image', 'Box Images')
+            $form->multipleFile('box_image', 'Upload Index')
                 // ->pathColumn('path')
                 ->attribute('id', 'box_image')
                 ->removable()
-                ->rules('mimes:jpeg,png,jpg,gif,svg,pdf')
+                // ->rules('mimes:jpeg,png,jpg,gif,svg,pdf')
+                ->rules('mimes:pdf')
                 ->name(function ($file) {
                     return md5(time()) . "." . $file->guessExtension();
                 });
@@ -216,16 +220,15 @@ class BoxController extends AdminController
         $show = new Show(Box::findOrFail($id));
         $show->id("ID");
         $show->field("serial_no", __("Serial No"));
-        // $show->field("box_image", __("Box Image"))->image();
 
-        $images = self::getBoxImageOrPDF($id);
+        /*$images = self::getBoxImageOrPDF($id);
         $show->field('box_image', 'Box Image')->as(function () use ($images) {
             // dd($images);
             return json_decode($images, true);
-        })->image();
+        })->image();*/
 
         $pdfs = self::getBoxImageOrPDF($id, 'pdf');
-        $show->field('box_pdf', 'Box PDF')->unescape()->as(function () use ($pdfs) {
+        $show->field('box_pdf', 'Uploaded Index')->unescape()->as(function () use ($pdfs) {
             $finalArr = [];
             $count = 1;
             foreach ($pdfs ?? [] as $pdf) {
@@ -240,9 +243,6 @@ class BoxController extends AdminController
             }
 
             return view('view_pdf', ['data' => $finalArr])->render();
-
-            // return join('<br>', $pdfs);
-            // return json_decode($pdfs, true);
         });
 
         /*$show->field('box_image', 'Box Item')->as(function () use ($id) {
@@ -392,11 +392,29 @@ class BoxController extends AdminController
      */
     protected function script()
     {
+        $adminUserId = Admin::user()->id;
         return <<<SCRIPT
 
 $(document).ready(function () {
+
     $("#has-many-index_item").find(".add").html(`<i class="fa fa-plus"></i>&nbsp;New Index Item`);
     $("#has-many-box_comment").find(".add").html(`<i class="fa fa-plus"></i>&nbsp;New Comment`);
+
+    $("#has-many-box_comment")
+        .find('.created_by')
+        .each(function (i, obj) {
+            let createdBy = obj.name;
+            let createId = '$adminUserId';
+            // console.log('name ', obj.name);
+            // console.log('value ', obj.value);
+            let textField = createdBy.replace('created_by', 'title');
+            if (obj.value != createId) {
+                $('[name="' + textField + '"]').attr('readonly', true);
+                $('[name="' + createdBy + '"]').parent('.has-many-box_comment-form').
+                find('.remove').parent().parent().hide();
+            }
+        });
+
 });
 
 SCRIPT;
