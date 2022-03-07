@@ -48,7 +48,7 @@ return [
     'succeeded'             => 'Succeeded',
     'failed'                => 'Failed',
     'delete_confirm'        => 'Are you sure to delete this item ?',
-    'delete_succeeded'      => 'Delete succeeded !',
+    'delete_succeeded'      => 'Delete Successful',
     'delete_failed'         => 'Delete failed !',
     'update_succeeded'      => 'Update succeeded !',
     'save_succeeded'        => 'Save succeeded !',

@@ -47,7 +47,7 @@
 @if(!empty($data))
     @foreach($data as $item)
         <div class="container">
-            <span> <strong>{{ $item['creator'] }}</strong> :  {{ $item['comment'] }} </span>
+            <span> {{ $item['comment'] }} </span>
             <p></p>
             <span class="time-left">{{ $item['timestamp'] }}</span>
         </div>

@@ -29,7 +29,7 @@ class Box extends Model
      * @var array
      */
     protected $table = 'boxes';
-    protected $fillable = ['serial_no', 'box_image', 'status', 'created_by', 'updated_by'];
+    protected $fillable = ['serial_no', 'box_image', 'edit_user_id', 'edit_user_status', 'edited_at', 'status', 'is_archived', 'created_by', 'updated_by'];
 
     public function creator()
     {

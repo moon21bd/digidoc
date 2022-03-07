@@ -5,12 +5,17 @@ namespace App\Admin\Controllers;
 use App\Models\Box;
 use App\Models\BoxComment;
 use App\Models\IndexItem;
+use App\Repositories\NotificationHandler;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Form;
 use Encore\Admin\Grid;
 use Encore\Admin\Show;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\MessageBag;
 use Illuminate\Support\Str;
 use Illuminate\Support\Arr;
 use Encore\Admin\Widgets\Table;
@@ -30,34 +35,64 @@ class BoxController extends AdminController
     /**
      * Make a form builder.
      *
-     * @return Form
+     * @return \Illuminate\Http\RedirectResponse
      */
     protected function form()
     {
         Admin::script($this->script());
+        $adminUserId = Admin::user()->id;
         $form = new Form(new Box);
-        // $isClient = $this->checkIsClient(Admin::user()->id);
-        $isClient = Admin::user()->isRole('client');
 
+        if ($form->isEditing()) {
+            $boxesId = (request()->route()->parameter("box")) ? request()->route()->parameter("box") : 0;
+            $boxesInfo = Box::find($boxesId);
+            // dd($boxesId, $boxesInfo->toArray());
+
+            $editUserStatus = $boxesInfo->edit_user_status ?? 0; // 1 = row is already locked, 0 = row is free
+            $editUserId = $boxesInfo->edit_user_id ?? 0;
+            if ($editUserId == $adminUserId && $editUserStatus == 1) { // user edited first time and suddenly refresh the page.
+
+                // echo "::First USER ALREADY IN::";
+                // do nothing or redirect same page
+            } else {
+                if ($editUserStatus == 1) { // non edited user
+                    // redirect back user to grid because current row is locked with another user
+                    // echo "::NON EDITED USER::";
+
+                    $error = new MessageBag([
+                        'title' => 'Alert',
+                        'message' => "Another session is already open for edit.",
+                    ]);
+                    return redirect()->route('admin.boxes.index')->with(compact('error'));
+
+                } else {
+                    // new edited user. do update box user id and box status all user
+                    $boxesInfo->edit_user_id = $adminUserId;
+                    $boxesInfo->edit_user_status = 1;
+                    $boxesInfo->edited_at = now()->toDateTimeString();
+                    $boxesInfo->save();
+                }
+            }
+
+        }
+
+        $isClient = Admin::user()->isRole('client');
         if ($isClient) { // client section here
 
             $form->display("serial_no", __("Serial No"))->disable();
-
-            /*$form->hasMany("index_item", 'Index Items', function (Form\NestedForm $form) {
-                $form->text("title", __("Item"))->rules('required')->disable();
-                $form->hidden("created_by")->default(Admin::user()->id);
+            $form->hasMany("index_item", 'Index Items', function (Form\NestedForm $form) {
+                $form->text("title", __("Item"))->disable();
+                $form->hidden("created_by")->default(Admin::user()->id)->disable();
                 // $form->hidden("updated_by")->default(Admin::user()->id);
-            });*/
+            })->readonly();
 
-           $box_comment = $form->hasMany("box_comment", 'Comments', function (Form\NestedForm $form) {
+            $form->hasMany("box_comment", 'Comments', function (Form\NestedForm $form) {
                 $form->text("title", __("Comment"))->rules('required');
                 $form->hidden("created_by")->default(Admin::user()->id);
                 $form->hidden("updated_by")->default(Admin::user()->id);
             });
-            $box_comment->readonly();
 
             $form->multipleFile("box_image", __("Uploaded Index"))->disable();
-
             $form->radio("status", __("Status"))
                 ->options(['Shred It' => 'Shred It', 'Scan It' => 'Scan It', 'More Info Needed' => 'More Info Needed']);
 
@@ -71,24 +106,12 @@ class BoxController extends AdminController
             });
 
             $form->hasMany("box_comment", 'Comment', function (Form\NestedForm $form) {
-                $form->text("title", __("Comments"))->rules('required')
-                //    ->disable()
-                ;
+                $form->text("title", __("Comments"))->rules('required');
                 $form->hidden("created_by")->default(Admin::user()->id);
                 $form->hidden("updated_by")->default(Admin::user()->id);
             });
 
-            /*$form->file("box_image", __("Box Image"))
-                ->attribute('id', 'box_image')
-                ->removable()
-                ->rules('mimes:jpeg,png,jpg,gif,svg,pdf')
-                // ->move('files')
-                ->name(function ($file) {
-                    return md5(time()) . "." . $file->guessExtension();
-                });*/
-
             $form->multipleFile('box_image', 'Upload Index')
-                // ->pathColumn('path')
                 ->attribute('id', 'box_image')
                 ->removable()
                 // ->rules('mimes:jpeg,png,jpg,gif,svg,pdf')
@@ -114,15 +137,35 @@ class BoxController extends AdminController
 
         // callback after save
         $form->saved(function (Form $form) use ($isClient) {
+            $adminUserId = Admin::user()->id;
             if ($isClient) {
-                $form->model()->updated_by = Admin::user()->id;
+                if ($form->model()->status == 'Shred It') {
+                    // get notify if index status is shredded
+                    $link = url("admin/boxes" . "/" . $form->model()->id);
+                    $notificationHandler = new NotificationHandler();
+                    $notificationHandler->sendNotification('Your Index Get Shredded', 'One of your index get shredded. Click to see this.', $link, $form->model()->created_by);
+                }
+
+                $form->model()->updated_by = $adminUserId;
                 $form->model()->save();
             }
+
+            if ($form->isEditing()) {
+                $boxesInfo = Box::findOrFail($form->model()->id);
+                $editUserStatus = $boxesInfo->edit_user_status ?? 0; // 1 = row is already locked, 0 = row is free
+                $editUserId = $boxesInfo->edit_user_id ?? 0;
+                if ($editUserId == $adminUserId && $editUserStatus == 1) { // first time row created user is about to unlock the row
+                    $form->model()->edit_user_id = 0;
+                    $form->model()->edit_user_status = 0;
+                    $form->model()->edited_at = now()->toDateTimeString();
+                    $form->model()->save();
+                }
+            }
+
         });
 
         return $form;
     }
-
 
     /**
      * Make a grid builder.
@@ -133,15 +176,20 @@ class BoxController extends AdminController
     {
         $grid = new Grid(new Box);
         $query = $grid->model();
-
-        // Admin::user()->isRole('client');
-        // $isClient = $this->checkIsClient(Admin::user()->id);
         $isClient = Admin::user()->isRole('client');
 
-        if (Admin::user()->isRole('vendor')) { // if user is vendor
-            $query->where(function ($q) {
-                $q->where('created_by', '=', Admin::user()->id);
-            });
+        if (!Admin::user()->isAdministrator()) { // if user is not an admin. admin should see all content
+            if (Admin::user()->isRole('vendor')) { // if user is vendor
+                $query->where(function ($q) {
+                    $q->where('is_archived', 0);
+                    $q->where('created_by', '=', Admin::user()->id);
+                });
+            } else if (Admin::user()->isRole('client')) { // user is client
+                $query->where(function ($q) {
+                    $q->whereIn('status', ['Scan It', 'More Info Needed']);
+                    $q->orWhereNull('status');
+                });
+            }
         }
 
         $grid->column("id", __("Sl"))->sortable();
@@ -188,18 +236,80 @@ class BoxController extends AdminController
 
         $grid->disableCreateButton($isDisableCreateButton);
         $grid->disableFilter();
+
         $grid->actions(function ($actions) use ($isClient) {
             // $actions->disableView();
             // $actions->disableEdit();
+            $btnId = $actions->getKey();
             if ($isClient) {
                 $actions->disableDelete();
             }
+
+            if (Admin::user()->isRole('vendor')) {
+                if (isset($actions->row->status) && ($actions->row->status == 'Shred It')) {
+
+                    $htmlBtn = <<<BTN
+<script>
+    function moveToArchive(ev) {
+        ev.preventDefault();
+        $.ajax({
+            url: '/admin/setMoveToArchive',
+            type: "POST",
+            data: {
+                'id': '$btnId',
+                '_token': $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function (result) {
+                console.log('Result::', result);
+                if (result.status === 1) {
+                    swal({
+                        title: 'Success',
+                        text: result.msg,
+                        icon: "success",
+                        type: "success",
+                        showCancelButton: false,
+                        showConfirmButton: false
+                    });
+                    setTimeout(function () {
+                        location.reload();
+                        return false;
+                    }, 1000);
+                } else {
+                    swal({
+                        title: 'Failed',
+                        text: result.msg,
+                        icon: "error",
+                        type: "error",
+                        showCancelButton: false,
+                        showConfirmButton: false
+                    });
+
+                    setTimeout(function () {
+                        location.reload();
+                        return false;
+                    }, 1000);
+
+                }
+
+            }
+        });
+    }
+</script>
+<a title="Move to archive" onclick="moveToArchive(event)" class="" href="#"><i class="fa fa-archive"></i></a>
+BTN;
+                    $actions->prepend($htmlBtn);
+                }
+            }
+
         });
 
         $grid->filter(function ($filter) {
             // Remove the default id filter
             $filter->disableIdFilter();
         });
+
+        // for custom update use below link/file
+        // E:\laragon\www\pulse_v2\custom-excel-export.md
 
         $grid->export(function ($export) {
             $export->only(['id', 'serial_no', 'status', 'updated_at']);
@@ -217,15 +327,10 @@ class BoxController extends AdminController
      */
     protected function detail($id)
     {
-        $show = new Show(Box::findOrFail($id));
+        $boxInfo = Box::findOrFail($id);
+        $show = new Show($boxInfo);
         $show->id("ID");
         $show->field("serial_no", __("Serial No"));
-
-        /*$images = self::getBoxImageOrPDF($id);
-        $show->field('box_image', 'Box Image')->as(function () use ($images) {
-            // dd($images);
-            return json_decode($images, true);
-        })->image();*/
 
         $pdfs = self::getBoxImageOrPDF($id, 'pdf');
         $show->field('box_pdf', 'Uploaded Index')->unescape()->as(function () use ($pdfs) {
@@ -245,38 +350,11 @@ class BoxController extends AdminController
             return view('view_pdf', ['data' => $finalArr])->render();
         });
 
-        /*$show->field('box_image', 'Box Item')->as(function () use ($id) {
-            $boxesArr = Box::where('id', $id)->first(['box_image'])->toArray();
-            // dd($boxesArr);
-            $imgArr = [];
-            $pdfArr = [];
-            foreach ($boxesArr['box_image'] ?? [] as $item) {
-                $ext = pathinfo($item, PATHINFO_EXTENSION);
-                $path = asset('uploads/');
-                if (strtolower($ext) == 'pdf') {
-                    $pdfArr[] = $path . $item;
-                } else {
-                    $imgArr[] = $path . $item;
-                }
-            }
-
-            dd($imgArr, $pdfArr);
-            return json_decode($images, true);
-        })->image();*/
-
         $show->field("status", __("Status"));
         $viewIndexItemData = self::getIndexItemHistory($id);
         $show->field('index_item', 'Index Item')->unescape()->as(function () use ($viewIndexItemData) {
             return $viewIndexItemData;
         });
-
-        /*$show->field('index_item', 'Index Item')->as(function () use ($id) {
-            $boxesArr = IndexItem::where('box_id', $id)->get(['title'])->toArray();
-            $boxesArr = array_map(function ($boxes) {
-                return $boxes['title'] ?? "";
-            }, $boxesArr);
-            return join('<br>', $boxesArr);
-        });*/
 
         $viewData = self::getAndGenerateCommentHistory($id);
         $show->field('comment_history', 'Comment History')->unescape()->as(function () use ($viewData) {
@@ -284,13 +362,70 @@ class BoxController extends AdminController
         });
 
         $show->panel()
-            ->tools(function ($tools) {
+            ->tools(function ($tools) use ($boxInfo) {
                 // $tools->disableEdit();
-                // $isClient = $this->checkIsClient(Admin::user()->id);
                 $isClient = Admin::user()->isRole('client');
                 if ($isClient) {
                     $tools->disableList();
                     $tools->disableDelete();
+                }
+
+                if (Admin::user()->isRole('vendor')) {
+                    if (
+                        (isset($boxInfo->status) && ($boxInfo->status == 'Shred It'))
+                        && ($boxInfo->is_archived != 1)
+                    ) {
+                        $btnId = $boxInfo->id ?? 0;
+                        $htmlBtn = <<<BTN
+<script>
+    function moveToArchive(ev) {
+        ev.preventDefault();
+        $.ajax({
+            url: '/admin/setMoveToArchive',
+            type: "POST",
+            data: {
+                'id': '$btnId',
+                '_token': $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function (result) {
+                if (result.status === 1) {
+                    swal({
+                        title: 'Success',
+                        text: result.msg,
+                        icon: "success",
+                        type: "success",
+                        showCancelButton: false,
+                        showConfirmButton: false
+                    });
+
+                    window.location = '/admin/boxes';
+                    return false;
+                } else {
+                    swal({
+                        title: 'Failed',
+                        text: result.msg,
+                        icon: "error",
+                        type: "error",
+                        showCancelButton: false,
+                        showConfirmButton: false
+                    });
+
+                    window.location = '/admin/boxes';
+                    return false;
+
+                }
+
+            }
+        });
+    }
+</script>
+<a href="#" class="btn btn-sm btn-warning" onclick="moveToArchive(event)" title="Move to archive">
+	<i class="fa fa-archive"></i><span class="hidden-xs">Move to archive </span>
+</a>&nbsp;
+
+BTN;
+                        $tools->prepend($htmlBtn);
+                    }
                 }
             });
 
@@ -387,18 +522,61 @@ class BoxController extends AdminController
 
     }
 
+    public function notificationWrapper($title, $description, $link, $userId)
+    {
+        $notificationHandler = new NotificationHandler();
+        $notificationHandler->sendNotification($title, $description, $link, $userId);
+        return 'SENT';
+    }
+
+    public static function customRedirect($url = '/admin')
+    {
+        echo "<script> window.location = '" . $url . "'; </script>";
+        exit();
+    }
+
+    public function setMoveToArchive(Request $request)
+    {
+        $update = Box::where('id', $request->id)->update(['is_archived' => 1]);
+        if ($update) {
+            return ['status' => 1, 'msg' => 'Move to archive success.'];
+        }
+        return ['status' => 0, 'msg' => 'Move to archive failed.'];
+    }
+
     /**
-     * Message variable select action scripts
+     * Custom js scripts
      */
     protected function script()
     {
         $adminUserId = Admin::user()->id;
+        $isClient = Admin::user()->isRole('client');
+
+        $isUserClient = 'NA';
+        if ($isClient)
+            $isUserClient = 'YES';
+
         return <<<SCRIPT
 
 $(document).ready(function () {
 
     $("#has-many-index_item").find(".add").html(`<i class="fa fa-plus"></i>&nbsp;New Index Item`);
     $("#has-many-box_comment").find(".add").html(`<i class="fa fa-plus"></i>&nbsp;New Comment`);
+
+     let userIsClient = '$isUserClient';
+    $("#has-many-index_item")
+        .find('.created_by')
+        .each(function (i, obj) {
+            let createdBy = obj.name;
+            // console.log('createdBy ', createdBy);
+            if (userIsClient == 'YES') {
+                let textField = createdBy.replace('created_by', 'title');
+                $('[name="' + textField + '"]').attr('readonly', true);
+                $('[name="' + createdBy + '"]').parent('.has-many-index_item-form').find('.remove').parent().parent().hide();
+                $("#has-many-index_item").find(".add").hide();
+            }
+
+        });
 
     $("#has-many-box_comment")
         .find('.created_by')

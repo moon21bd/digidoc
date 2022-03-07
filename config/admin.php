@@ -97,6 +97,17 @@ return [
     */
     'https' => env('ADMIN_HTTPS', false),
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Enable Admin Notification
+    |--------------------------------------------------------------------------
+    |
+    | If you want to add notification to your
+    |
+    */
+    'enable_notification' => env('ENABLE_NOTIFICATION', false),
+
     /*
     |--------------------------------------------------------------------------
     | Laravel-admin auth setting
@@ -382,8 +393,8 @@ return [
     | The global Grid action display class.
     |--------------------------------------------------------------------------
     */
-    'grid_action_class' => \Encore\Admin\Grid\Displayers\DropdownActions::class,
-    // 'grid_action_class' => \Encore\Admin\Grid\Displayers\Actions::class,
+    // 'grid_action_class' => \Encore\Admin\Grid\Displayers\DropdownActions::class,
+    'grid_action_class' => \Encore\Admin\Grid\Displayers\Actions::class,
 
     /*
     |--------------------------------------------------------------------------

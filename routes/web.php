@@ -16,3 +16,12 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return redirect("/admin");
 });
+
+Route::get('pusher/get-data', function () {
+    return view('welcome');
+});
+
+Route::get('pusher-test', function () {
+    return App\Admin\Controllers\NotificationHandlerExampleController::notificationExample();
+});
+

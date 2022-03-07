@@ -3,17 +3,7 @@
 namespace App\Admin\Controllers;
 
 use App\Models\BoxComment;
-
-
-use App\Models\Dotlines\LinkageOption;
-use App\Models\Dotlines\ProductForm;
-use Dotlines\Admin\Repositories\DotlineCommon;
 use Encore\Admin\Controllers\AdminController;
-use Dotlines\Admin\Auth\Database\Administrator;
-use Dotlines\Admin\Facades\Admin;
-use Dotlines\Admin\Helpers\Common;
-use Dotlines\Admin\Form;
-use Dotlines\Admin\Grid;
 use Encore\Admin\Show;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -59,8 +49,8 @@ class BoxCommentController extends AdminController
 
         });
         $productFormSettings = ProductForm::where("model_name", "BoxComment")->first();
-        if ($productFormSettings->dotline_form_class) {
-            $form->addFormClassScript($productFormSettings->dotline_form_class);
+        if ($productFormSettings->form_class) {
+            $form->addFormClassScript($productFormSettings->form_class);
         }
         return $form;
     }
@@ -152,7 +142,7 @@ class BoxCommentController extends AdminController
         }
 
         $disableCreateButton = true;
-        $checkCreateButtonPermission = DotlineCommon::checkCreateButtonPermission($actionPermission, $createIdCondition);
+        $checkCreateButtonPermission = Common::checkCreateButtonPermission($actionPermission, $createIdCondition);
         if (($checkCreateButtonPermission) || ((Admin::user()->organization_id == 1) && ($enableAdministratorPermissionByDefault == '1'))) {
             $disableCreateButton = false;
         }
@@ -169,8 +159,8 @@ class BoxCommentController extends AdminController
                 $disableViewButton = false;
             }
 
-            $checkEditButtonPermission = DotlineCommon::checkEditButtonPermission($actionPermission, $editIdCondition, $editRefidCondition, $editCustomCondition, $actions->row);
-            $checkDeleteButtonPermission = DotlineCommon::checkDeleteButtonPermission($actionPermission, $deleteIdCondition, $deleteRefidCondition, $deleteCustomCondition, $actions->row);
+            $checkEditButtonPermission = Common::checkEditButtonPermission($actionPermission, $editIdCondition, $editRefidCondition, $editCustomCondition, $actions->row);
+            $checkDeleteButtonPermission = Common::checkDeleteButtonPermission($actionPermission, $deleteIdCondition, $deleteRefidCondition, $deleteCustomCondition, $actions->row);
 
             if (in_array("edit", $gridSetting) && ($checkEditButtonPermission || ((Admin::user()->organization_id == 1) && ($enableAdministratorPermissionByDefault == '1')))) {
                 $disableEditButton = false;
@@ -198,8 +188,8 @@ class BoxCommentController extends AdminController
 
         });
 
-        if ($productFormSettings->dotline_grid_class) {
-            $grid->addGridClassScript($productFormSettings->dotline_grid_class);
+        if ($productFormSettings->grid_class) {
+            $grid->addGridClassScript($productFormSettings->grid_class);
         }
         if (in_array("enable_row_selector", $gridSetting)) {
             $grid->disableRowSelector(false);
