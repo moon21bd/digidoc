@@ -104,7 +104,7 @@
 
     var another_channel = pusher.subscribe('my_channel');
     another_channel.bind('my_event', function (data) {
-        console.log('Data Private::', data)
+        // console.log('Data Private::', data)
         // alert(JSON.stringify(data));
     });
 </script>

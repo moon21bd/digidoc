@@ -108,7 +108,7 @@ DHTML;
 
         var another_channel = pusher.subscribe('channel-user-" . $adminUserId . "');
         another_channel.bind('user_event', function(data) {
-            console.log('Data Private::', data);
+            // console.log('Data Private::', data);
             var html = '';
             html += '<li>' +
              '<a href=\"'+ data['link'] +'\" class=\"notification-viewer\" data-id=\"'+ data['id'] +'\">' +
@@ -172,10 +172,10 @@ $(function () {
     $('.grid-row-edit').attr('title', 'Edit');
     $('.grid-row-view').attr('title', 'View');
 
-    setInterval(function() {
+    /*setInterval(function() {
       console.log('reloaded');
       window.location.reload();
-    }, 300000);
+    }, 300000);*/
 });
 JS
 );
