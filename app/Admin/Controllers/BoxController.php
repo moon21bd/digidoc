@@ -41,36 +41,42 @@ class BoxController extends AdminController
     {
         Admin::script($this->script());
         $adminUserId = Admin::user()->id;
+
+        $allAdminUsers = AdminUser::whereHas('roles', function ($q) {
+            $q->where('slug', "administrator");
+        })->pluck('id', 'id')->toArray();
+
         $form = new Form(new Box);
 
         if ($form->isEditing()) {
             $boxesId = (request()->route()->parameter("box")) ? request()->route()->parameter("box") : 0;
             $boxesInfo = Box::find($boxesId);
             // dd($boxesId, $boxesInfo->toArray());
+            if ($boxesInfo) {
+                $editUserStatus = $boxesInfo->edit_user_status ?? 0; // 1 = row is already locked, 0 = row is free
+                $editUserId = $boxesInfo->edit_user_id ?? 0;
+                if ($editUserId == $adminUserId && $editUserStatus == 1) { // user edited first time and suddenly refresh the page.
 
-            $editUserStatus = $boxesInfo->edit_user_status ?? 0; // 1 = row is already locked, 0 = row is free
-            $editUserId = $boxesInfo->edit_user_id ?? 0;
-            if ($editUserId == $adminUserId && $editUserStatus == 1) { // user edited first time and suddenly refresh the page.
-
-                // echo "::First USER ALREADY IN::";
-                // do nothing or redirect same page
-            } else {
-                if ($editUserStatus == 1) { // non edited user
-                    // redirect back user to grid because current row is locked with another user
-                    // echo "::NON EDITED USER::";
-
-                    $error = new MessageBag([
-                        'title' => 'Alert',
-                        'message' => "Another session is already open for edit.",
-                    ]);
-                    return redirect()->route('admin.boxes.index')->with(compact('error'));
-
+                    // echo "::First USER ALREADY IN::";
+                    // do nothing or redirect same page
                 } else {
-                    // new edited user. do update box user id and box status all user
-                    $boxesInfo->edit_user_id = $adminUserId;
-                    $boxesInfo->edit_user_status = 1;
-                    $boxesInfo->edited_at = now()->toDateTimeString();
-                    $boxesInfo->save();
+                    if ($editUserStatus == 1) { // non edited user
+                        // redirect back user to grid because current row is locked with another user
+                        // echo "::NON EDITED USER::";
+
+                        $error = new MessageBag([
+                            'title' => 'Alert',
+                            'message' => "Another session is already open for edit.",
+                        ]);
+                        return redirect()->route('admin.boxes.index')->with(compact('error'));
+
+                    } else {
+                        // new edited user. do update box user id and box status all user
+                        $boxesInfo->edit_user_id = $adminUserId;
+                        $boxesInfo->edit_user_status = 1;
+                        $boxesInfo->edited_at = now()->toDateTimeString();
+                        $boxesInfo->save();
+                    }
                 }
             }
 
@@ -136,8 +142,22 @@ class BoxController extends AdminController
         });
 
         // callback after save
-        $form->saved(function (Form $form) use ($isClient) {
+        $form->saved(function (Form $form) use ($isClient, $allAdminUsers) {
             $adminUserId = Admin::user()->id;
+
+            // if new comment found in index shoot and notification to admin for this
+            $hasNewBoxComments = (\Illuminate\Support\Facades\Request::post() !== null) ? \Illuminate\Support\Facades\Request::post()['box_comment'] : [];
+            foreach ($hasNewBoxComments as $key => $value) :
+                if (stripos($key, 'new_') !== false) {
+                    foreach ($allAdminUsers ?? [] as $adminId) {
+                        // administrator get notified if new comment post found
+                        $link = admin_url("/boxes" . "/" . $form->model()->id);
+                        $notificationHandler = new NotificationHandler();
+                        $notificationHandler->sendNotification('New Comment Found', 'New comment found. Click to see this.', $link, $adminId);
+                    }
+                }
+            endforeach;
+
             if ($isClient) {
                 if ($form->model()->status == 'Shred It') {
                     // get notify if index status is shredded
@@ -145,9 +165,17 @@ class BoxController extends AdminController
                     $notificationHandler = new NotificationHandler();
                     $notificationHandler->sendNotification('Your Index Get Shredded', 'One of your index get shredded. Click to see this.', $link, $form->model()->created_by);
                 }
-
                 $form->model()->updated_by = $adminUserId;
                 $form->model()->save();
+            }
+
+            if ($form->isCreating()) { // admin notification for new box creation
+                foreach ($allAdminUsers ?? [] as $adminId) {
+                    // administrator get notified if new index box is created.
+                    $link = admin_url("/boxes" . "/" . $form->model()->id);
+                    $notificationHandler = new NotificationHandler();
+                    $notificationHandler->sendNotification('New Index Created', 'A vendor creates a new index. Click to see this.', $link, $adminId);
+                }
             }
 
             if ($form->isEditing()) {
@@ -537,8 +565,20 @@ BTN;
 
     public function setMoveToArchive(Request $request)
     {
-        $update = Box::where('id', $request->id)->update(['is_archived' => 1]);
+        $boxId = $request->id;
+        $update = Box::where('id', $boxId)->update(['is_archived' => 1]);
         if ($update) {
+
+            $allAdminUsers = AdminUser::whereHas('roles', function ($q) {
+                $q->where('slug', "administrator");
+            })->pluck('id', 'id')->toArray();
+
+            foreach ($allAdminUsers ?? [] as $adminId) {
+                $link = url("admin/boxes" . "/" . $boxId);
+                $notificationHandler = new NotificationHandler();
+                $notificationHandler->sendNotification('New Archive Index Found', 'New Archive index found. Click to see this.', $link, $adminId);
+            }
+
             return ['status' => 1, 'msg' => 'Move to archive success.'];
         }
         return ['status' => 0, 'msg' => 'Move to archive failed.'];
