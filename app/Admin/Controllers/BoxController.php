@@ -6,6 +6,7 @@ use App\Models\Box;
 use App\Models\BoxComment;
 use App\Models\IndexItem;
 use App\Repositories\NotificationHandler;
+use Carbon\Carbon;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Form;
@@ -20,8 +21,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Arr;
 use Encore\Admin\Widgets\Table;
 use App\Models\AdminUser;
-use App\Admin\Extensions\BoxesExporter;
-
+use App\Admin\Extensions\BoxExporter;
 
 class BoxController extends AdminController
 {
@@ -35,7 +35,7 @@ class BoxController extends AdminController
     /**
      * Make a form builder.
      *
-     * @return \Illuminate\Http\RedirectResponse
+     * @return
      */
     protected function form()
     {
@@ -55,6 +55,11 @@ class BoxController extends AdminController
             if ($boxesInfo) {
                 $editUserStatus = $boxesInfo->edit_user_status ?? 0; // 1 = row is already locked, 0 = row is free
                 $editUserId = $boxesInfo->edit_user_id ?? 0;
+                $lastEditStartAt = $boxesInfo->edited_at ?? now()->toDateTimeString();
+                $addTenToEditStartAt = Carbon::parse($lastEditStartAt)->addMinutes(15);
+                $isEligibleToEdit = Carbon::now()->gt($addTenToEditStartAt);
+
+                // dd($isEligibleToEdit);
                 if ($editUserId == $adminUserId && $editUserStatus == 1) { // user edited first time and suddenly refresh the page.
 
                     // echo "::First USER ALREADY IN::";
@@ -143,7 +148,9 @@ class BoxController extends AdminController
 
         // callback after save
         $form->saved(function (Form $form) use ($isClient, $allAdminUsers) {
+
             $adminUserId = Admin::user()->id;
+
 
             // if new comment found in index shoot and notification to admin for this
             $hasNewBoxComments = (\Illuminate\Support\Facades\Request::post() !== null) ? \Illuminate\Support\Facades\Request::post()['box_comment'] : [];
@@ -158,15 +165,16 @@ class BoxController extends AdminController
                 }
             endforeach;
 
-            if ($isClient) {
+            if ($isClient || Admin::user()->isAdministrator()) {
+                $form->model()->updated_by = $adminUserId;
+                $form->model()->save();
+
                 if ($form->model()->status == 'Shred It') {
                     // get notify if index status is shredded
                     $link = url("admin/boxes" . "/" . $form->model()->id);
                     $notificationHandler = new NotificationHandler();
                     $notificationHandler->sendNotification('Your Index Get Shredded', 'One of your index get shredded. Click to see this.', $link, $form->model()->created_by);
                 }
-                $form->model()->updated_by = $adminUserId;
-                $form->model()->save();
             }
 
             if ($form->isCreating()) { // admin notification for new box creation
@@ -204,6 +212,7 @@ class BoxController extends AdminController
     {
         $grid = new Grid(new Box);
         $query = $grid->model();
+        $query->with(['index_item', 'box_comment']);
         $isClient = Admin::user()->isRole('client');
 
         if (!Admin::user()->isAdministrator()) { // if user is not an admin. admin should see all content
@@ -222,7 +231,7 @@ class BoxController extends AdminController
 
         $grid->column("id", __("Sl"))->sortable();
         $grid->column("serial_no", __("Box Serial"));
-        $grid->column('', 'Index Item')->display(function () {
+        $grid->column('index_item', 'Index Item')->display(function () {
             $id = $this->id;
             $boxesArr = IndexItem::where('box_id', $id)->get(['title'])->toArray();
             $boxesArr = array_map(function ($boxes) {
@@ -336,12 +345,12 @@ BTN;
             $filter->disableIdFilter();
         });
 
-        // for custom update use below link/file
-        // E:\laragon\www\pulse_v2\custom-excel-export.md
+        $grid->exporter(new BoxExporter());
 
-        $grid->export(function ($export) {
-            $export->only(['id', 'serial_no', 'status', 'updated_at']);
-        });
+        /*$grid->export(function ($export) {
+            $export->originalValue(['status']);
+            $export->only(['id', 'serial_no', 'status', 'updated_at', 'index_item']);
+        });*/
 
         $grid->model()->orderBy('id', 'desc');
         return $grid;

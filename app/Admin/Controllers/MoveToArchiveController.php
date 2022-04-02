@@ -17,7 +17,7 @@ class MoveToArchiveController extends AdminController
     public function moveToArchiveReport(): Content
     {
         return Admin::content(function (Content $content) {
-            $content->header("Move To Archive");
+            $content->header("Archived");
             $content->description("&nbsp;");
             $content->body($this->moveToArchiveReportGrid());
         });

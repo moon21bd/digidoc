@@ -171,11 +171,6 @@ $(function () {
     $('.grid-row-delete').attr('title', 'Delete');
     $('.grid-row-edit').attr('title', 'Edit');
     $('.grid-row-view').attr('title', 'View');
-
-    /*setInterval(function() {
-      console.log('reloaded');
-      window.location.reload();
-    }, 300000);*/
 });
 JS
 );
